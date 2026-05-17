@@ -101,10 +101,12 @@ sudo modprobe br_netfilter
 
 # ==================== Sysctl Settings ====================
 # These parameters are mandatory for Kubernetes networking
+# Enable iptables for bridged traffic(IPv4/IPv6)
+# Enable iptables for bridged traffic
 cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
-net.bridge.bridge-nf-call-iptables  = 1    # Enable iptables for bridged traffic
-net.bridge.bridge-nf-call-ip6tables = 1    # Same for IPv6
-net.ipv4.ip_forward                 = 1    # Allow IP forwarding (required for pod routing)
+net.bridge.bridge-nf-call-iptables  = 1    
+net.bridge.bridge-nf-call-ip6tables = 1    
+net.ipv4.ip_forward                 = 1    
 EOF
 
 sudo sysctl --system
@@ -115,7 +117,7 @@ sudo setenforce 0
 sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 ```
 
-**Firewall (Recommended)**
+**🔥Firewall**
 ```bash
 # Open the following essential ports:
 
