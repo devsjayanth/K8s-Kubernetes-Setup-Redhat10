@@ -1,4 +1,4 @@
-# 🚢3-Node Kubernetes Cluster on RedHat Family 🚀
+# 🚢3-Node Kubernetes Cluster on RedHat Family (SelfHosted-Baremetal-K8s) 🚀
 
 A complete step-by-step guide to deploy a 3-node Kubernetes cluster.
 
@@ -80,13 +80,17 @@ Prepares the system for stable Kubernetes operation.
 Cluster initialization may fail or pods may not communicate properly.
 
 ```bash
+# Update all system packages to latest version
 sudo dnf update -y
 
-# Disable Swap
+# ==================== Disable Swap ====================
+# Kubernetes does NOT work reliably with swap enabled
 sudo swapoff -a
-sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+sudo sed -i '/ swap / s/^$$ .* \$\$\$/#\1/g' /etc/fstab
 
-# Load required kernel modules
+# ==================== Load Kernel Modules ====================
+# overlay  = Required for container storage
+# br_netfilter = Required for Kubernetes networking (bridge + netfilter)
 cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 overlay
 br_netfilter
@@ -95,23 +99,40 @@ EOF
 sudo modprobe overlay
 sudo modprobe br_netfilter
 
-# Sysctl settings
+# ==================== Sysctl Settings ====================
+# These parameters are mandatory for Kubernetes networking
 cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
-net.bridge.bridge-nf-call-iptables  = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward                 = 1
+net.bridge.bridge-nf-call-iptables  = 1    # Enable iptables for bridged traffic
+net.bridge.bridge-nf-call-ip6tables = 1    # Same for IPv6
+net.ipv4.ip_forward                 = 1    # Allow IP forwarding (required for pod routing)
 EOF
 
 sudo sysctl --system
 
-# SELinux permissive
+# ==================== SELinux Configuration ====================
+# Set SELinux to permissive mode (Kubernetes works best in this mode on RHEL)
 sudo setenforce 0
 sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 ```
 
 **Firewall (Recommended)**
 ```bash
-sudo firewall-cmd --permanent --add-port={6443,2379-2380,10250,10259,10257}/tcp
+# Open the following essential ports:
+
+# Control Plane Ports (mainly on Master)
+# 6443   → Kubernetes API Server (kubectl and nodes connect here)
+# 2379-2380 → etcd client and peer communication
+# 10250  → Kubelet API (used by control plane)
+# 10259  → kube-scheduler
+# 10257  → kube-controller-manager
+
+sudo firewall-cmd --permanent --add-port=6443/tcp
+sudo firewall-cmd --permanent --add-port=2379-2380/tcp
+sudo firewall-cmd --permanent --add-port=10250/tcp
+sudo firewall-cmd --permanent --add-port=10259/tcp
+sudo firewall-cmd --permanent --add-port=10257/tcp
+
+# Apply the firewall rules
 sudo firewall-cmd --reload
 ```
 
