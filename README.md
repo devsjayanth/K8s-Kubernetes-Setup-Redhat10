@@ -1,4 +1,4 @@
-# 🚢3-Node Kubernetes Cluster on RedHat Family (SelfHosted-Baremetal-K8s) 🚀
+# 🚢Kubernetes Cluster on RedHat Family (SelfHosted-Baremetal-K8s) 🚀
 
 A complete step-by-step guide to deploy a 3-node Kubernetes cluster.
 
