@@ -52,7 +52,7 @@ sudo nmcli connection modify <interface-name> \
 sudo nmcli connection down <interface-name> && sudo nmcli connection up <interface-name>
 ```
 Example:
-```
+```bash
 sudo nmcli connection modify ens192 ipv4.addresses 10.0.0.50/24
 sudo nmcli connection modify ens192 connection.autoconnect yes
 sudo nmcli connection up ens192
