@@ -1,24 +1,23 @@
-# 🚢Kubernetes Cluster on RedHat Family (SelfHosted-Baremetal-K8s) 🚀
+# 🚢Kubernetes Cluster on RedHat/Fedora (SelfHosted-K8s)
 
 A complete step-by-step guide to deploy a 3-node Kubernetes cluster.
 
 ---
+**🛠Technology Stack**
 
-## 🌟 Cluster Specification
+- **☸️Kubernetes**: v1.36
+- **📦Container Runtime**: containerd
+- **🌐Network(CNI)**: Calico v3.32.0
+- **⚖️Load Balancer**: MetalLB v0.15.3
+- **🚪Ingress**: NGINX Ingress Controller v1.15.1
+
+## ☸️Cluster Specification
 
 | Role          | Hostname      | IP Address          |
 |---------------|---------------|---------------------|
 | Control Plane | k8s-master    | `<master-ip>`       |
 | Worker Node   | k8s-node1     | `<node1-ip>`        |
 | Worker Node   | k8s-node2     | `<node2-ip>`        |
-
-**Technology Stack (Latest Stable - May 2026)**
-
-- **Kubernetes**: v1.36
-- **Container Runtime**: containerd
-- **CNI**: Calico v3.32.0
-- **Load Balancer**: MetalLB v0.15.3
-- **Ingress**: NGINX Ingress Controller v1.15.1
 
 ---
 
