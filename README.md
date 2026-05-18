@@ -69,8 +69,9 @@ sudo tee -a /etc/hosts <<EOF
 EOF
 ```
 Example:
-```
+```bash
 sudo tee -a /etc/hosts <<EOF
+
 # Kubernetes Cluster Nodes
 10.0.0.150   k8s-master
 10.0.0.151    k8s-node1
