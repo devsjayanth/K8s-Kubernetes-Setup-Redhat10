@@ -1,4 +1,4 @@
-# 🚢Kubernetes Cluster on RedHat/Fedora (SelfHosted-K8s)
+# 🚢K8s Cluster on RedHat Distros (SelfHosted)
 
 A complete step-by-step guide to deploy a 3-node Kubernetes cluster.
 
