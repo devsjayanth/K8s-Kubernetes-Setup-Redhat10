@@ -103,14 +103,16 @@ Cluster initialization may fail or pods may not communicate properly.
 ```bash
 # Update system + install required kernel modules
 sudo dnf update -y
-sudo dnf install -y kernel-modules
-
+sudo dnf install -y kernel-modules dnf-plugins-core chrony
+# ==================== Enable Time Sync ====================
+sudo systemctl enable --now chronyd
+timedatectl set-timezone UTC
 # ==================== Disable Swap ====================
 sudo swapoff -a
-sudo sed -i '/swap/ s/^\(.*\)$/#\1/g' /etc/fstab
+sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
 # ==================== Load Kernel Modules ====================
-cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+sudo tee /etc/modules-load.d/k8s.conf > /dev/null <<EOF
 overlay
 br_netfilter
 EOF
@@ -119,7 +121,7 @@ sudo modprobe overlay
 sudo modprobe br_netfilter
 
 # ==================== Sysctl Settings ====================
-cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+sudo tee /etc/sysctl.d/k8s.conf > /dev/null <<EOF
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward                 = 1
