@@ -343,13 +343,16 @@ sudo kubeadm join <master-ip>:6443 --token <token> \
 > **Why install:** Kubernetes needs a CNI for pod-to-pod communication; Calico adds robust policy enforcement.  
 > **If skipped:** Pods cannot communicate across nodes; network policies won't work; cluster stays "NotReady".
 
-### 🔥Open BGP port on all nodes:
+### 🔥Open Firewall ports for Calico to work on all nodes:
 ```bash
 # Allow BGP (TCP 179) permanently
 sudo firewall-cmd --add-port=179/tcp --permanent
 
 # If using VXLAN (default in many Calico installs), also allow:
 sudo firewall-cmd --add-port=4789/udp --permanent
+
+# Allow Calico Typha communication (TCP 5473)
+sudo firewall-cmd --add-port=5473/tcp --permanent
 
 # If using WireGuard (less common), allow:
 sudo firewall-cmd --add-port=51820/udp --permanent
