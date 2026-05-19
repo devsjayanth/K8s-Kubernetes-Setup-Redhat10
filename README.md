@@ -360,8 +360,15 @@ sudo firewall-cmd --add-port=51820/udp --permanent
 # Reload firewall to apply changes
 sudo firewall-cmd --reload
 ```
+### Legacy Minimal Install Method:
+```bash
+# Apply Calico manifest for basic installation
+kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+```
 
-### Operator Install Method:
+Or
+
+### New Operator Install Method:
 ```bash
 # Prevent NetworkManager from managing Calico interfaces
 sudo mkdir -p /etc/NetworkManager/conf.d/
@@ -407,11 +414,6 @@ csi-node-driver-jq7cg                      2/2     Running   2 (8m53s ago)   44m
 csi-node-driver-rsmmf                      2/2     Running   0               44m
 goldmane-6885dcb7d-fc6gk                   1/1     Running   1 (8m53s ago)   44m
 whisker-644f746ccf-gfnjp                   2/2     Running   2 (8m53s ago)   42m
-```
-### Legacy Install Method:
-```bash
-# Apply Calico manifest for basic installation
-kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
 ```
 ---
 
