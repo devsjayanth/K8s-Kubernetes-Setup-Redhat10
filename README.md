@@ -343,29 +343,54 @@ sudo kubeadm join <master-ip>:6443 --token <token> \
 > **Why install:** Kubernetes needs a CNI for pod-to-pod communication; Calico adds robust policy enforcement.  
 > **If skipped:** Pods cannot communicate across nodes; network policies won't work; cluster stays "NotReady".
 
-### Legacy Install Method:
+### 🔥Open BGP port on all nodes:
 ```bash
-# Apply Calico manifest for basic installation
-kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+# Allow BGP (TCP 179) permanently
+sudo firewall-cmd --add-port=179/tcp --permanent
+
+# If using VXLAN (default in many Calico installs), also allow:
+sudo firewall-cmd --add-port=4789/udp --permanent
+
+# If using WireGuard (less common), allow:
+sudo firewall-cmd --add-port=51820/udp --permanent
+
+# Reload firewall to apply changes
+sudo firewall-cmd --reload
+
+# Verify rules are active
+sudo firewall-cmd --list-ports
+# Should show: 179/tcp 4789/udp (if added)
 ```
 
-### Operator Install Method (Recommended):
+### Operator Install Method:
 ```bash
-# Prevent NetworkManager from managing Calico interfaces (RHEL-specific fix)
+# Prevent NetworkManager from managing Calico interfaces
 sudo mkdir -p /etc/NetworkManager/conf.d/
 sudo tee /etc/NetworkManager/conf.d/calico.conf > /dev/null <<EOF
 [keyfile]
 unmanaged-devices=interface-name:cali*;interface-name:tunl*;interface-name:vxlan.calico
 EOF
 sudo systemctl reload NetworkManager
-
+```
+```
 # Install Calico operator for lifecycle management
 kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
-
+```
+### Verify the tigera-operator is running:
+```
+[adm001@k8s-master ~]$ kubectl get pod -n tigera-operator
+NAME                               READY   STATUS    RESTARTS   AGE
+tigera-operator-85dbff4478-x2ltj   1/1     Running   0          26m
+```
+```
 # Apply custom resources to activate Calico with default settings
 kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
 ```
-
+### Legacy Install Method:
+```bash
+# Apply Calico manifest for basic installation
+kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+```
 ---
 
 ## ⚖️ 8. Install MetalLB (On Master)
