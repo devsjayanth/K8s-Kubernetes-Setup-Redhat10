@@ -442,6 +442,22 @@ whisker-644f746ccf-gfnjp                   2/2     Running   2 (8m53s ago)   42m
 > **What this does:** Deploys MetalLB to provide LoadBalancer-type services on bare-metal clusters.  
 > **Why install:** Cloud LoadBalancers aren't available on-prem; MetalLB assigns real IPs to services.  
 > **If skipped:** Services of type LoadBalancer stay in "Pending" state with no external IP.
+> 
+### 🔥Open Firewall ports for MetalLB to work on all nodes:
+```bash
+# === MetalLB Firewall Configuration ===
+
+# 1. Allow MetalLB validating webhook (TCP 9443)
+#    Permits the Kubernetes API server to reach the MetalLB controller for CRD validation
+sudo firewall-cmd --permanent --add-port=9443/tcp
+
+# 2. Allow IPIP encapsulation (IP Protocol 4)
+#    Required by Calico CNI for cross-node pod traffic over the tunl0 interface
+sudo firewall-cmd --permanent --add-rich-rule='rule protocol value="ipip" accept'
+
+# 3. Reload firewalld to apply permanent rules to the running configuration
+sudo firewall-cmd --reload
+```
 
 ```bash
 # Deploy MetalLB native manifest with controller and speaker pods
