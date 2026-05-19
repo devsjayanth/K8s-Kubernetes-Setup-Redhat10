@@ -458,7 +458,7 @@ sudo firewall-cmd --permanent --add-rich-rule='rule protocol value="ipip" accept
 # 3. Reload firewalld to apply permanent rules to the running configuration
 sudo firewall-cmd --reload
 ```
-
+### Deploy MetalLB
 ```bash
 # Deploy MetalLB native manifest with controller and speaker pods
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
