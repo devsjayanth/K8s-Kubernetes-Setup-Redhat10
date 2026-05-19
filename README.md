@@ -356,10 +356,6 @@ sudo firewall-cmd --add-port=51820/udp --permanent
 
 # Reload firewall to apply changes
 sudo firewall-cmd --reload
-
-# Verify rules are active
-sudo firewall-cmd --list-ports
-# Should show: 179/tcp 4789/udp (if added)
 ```
 
 ### Operator Install Method:
@@ -378,7 +374,9 @@ kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0
 ```
 ### Verify the tigera-operator is running:
 ```
-[adm001@k8s-master ~]$ kubectl get pod -n tigera-operator
+kubectl get pod -n tigera-operator
+```
+```Output:
 NAME                               READY   STATUS    RESTARTS   AGE
 tigera-operator-85dbff4478-x2ltj   1/1     Running   0          26m
 ```
