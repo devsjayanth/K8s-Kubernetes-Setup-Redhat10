@@ -383,9 +383,30 @@ kubectl get pod -n tigera-operator
 NAME                               READY   STATUS    RESTARTS   AGE
 tigera-operator-85dbff4478-x2ltj   1/1     Running   0          26m
 ```
+Wait till the tigera-operator pod is running.
 ```
 # Apply custom resources to activate Calico with default settings
 kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
+```
+### Verify is the Calico is running:
+```
+kubectl get pod -n calico-system
+```
+```Output:
+NAME                                       READY   STATUS    RESTARTS        AGE
+calico-apiserver-c8747b9dc-9mfcv           1/1     Running   1 (8m53s ago)   44m
+calico-apiserver-c8747b9dc-h7npk           1/1     Running   1 (8m53s ago)   44m
+calico-kube-controllers-78b4dbb59c-h5rww   1/1     Running   1 (8m53s ago)   44m
+calico-node-27bjn                          1/1     Running   0               44m
+calico-node-jzmzd                          1/1     Running   1 (8m53s ago)   14m
+calico-node-zpr9q                          1/1     Running   0               44m
+calico-typha-657bc8d4d8-4w4k7              1/1     Running   0               44m
+calico-typha-657bc8d4d8-5qvk8              1/1     Running   0               44m
+csi-node-driver-ctqbl                      2/2     Running   0               44m
+csi-node-driver-jq7cg                      2/2     Running   2 (8m53s ago)   44m
+csi-node-driver-rsmmf                      2/2     Running   0               44m
+goldmane-6885dcb7d-fc6gk                   1/1     Running   1 (8m53s ago)   44m
+whisker-644f746ccf-gfnjp                   2/2     Running   2 (8m53s ago)   42m
 ```
 ### Legacy Install Method:
 ```bash
