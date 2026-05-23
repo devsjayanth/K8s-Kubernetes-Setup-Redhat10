@@ -675,20 +675,123 @@ kubectl delete deploy hello
 ```
 ---
 
-## 🧹 Appendix: Safe Node Reset (RHEL 10)
-*If a worker node completely breaks and you need to wipe it and rejoin it, use this script. It uses `nft` instead of the deprecated `iptables` command to safely flush the network rules.*
+# 📈 Step 7 — Scaling the Cluster (Adding & Removing Nodes)
 
+As your workloads grow, you will need to add more compute power (Scale Up) or decommission failing hardware (Scale Down). This section covers the safe, production-grade methods for managing your cluster topology.
+
+---
+
+## ➕ 7.1 Adding a New Worker Node (Scale Up)
+
+> 🧠 **What this does:** Safely introduces a new physical or virtual machine into the cluster. Kubernetes will automatically begin scheduling new pods onto it, and Calico will automatically extend the VXLAN overlay network to it.
+
+### 1. Prepare the New Machine
+You **must** run all of **Step 1 (OS Preparation)** on the new machine first. This includes setting the hostname, disabling swap, installing `kernel-modules-extra`, configuring the firewall trust zones, and installing `containerd` and `kubeadm`.
+
+### 2. Generate a Fresh Join Token `[Master Node]`
+*Run this on `k8s-master`.* Join tokens expire after 24 hours for security reasons. Generate a new one:
+```bash
+kubeadm token create --print-join-command
+```
+*(This will output a long command starting with `kubeadm join k8s-master:6443 --token ...`)*
+
+### 3. Join the New Worker `[Worker Node]`
+*Run this on the **new worker node**.* Paste the command from the previous step, and append the `--cri-socket` flag to ensure it uses containerd:
+```bash
+sudo <paste-the-join-command-here> --cri-socket unix:///run/containerd/containerd.sock
+```
+
+### 4. Verify `[Master Node]`
+*Run on `k8s-master`.* Watch the new node join and Calico deploy to it:
+```bash
+kubectl get nodes -w
+```
+
+---
+
+## ➖ 7.2 Removing a Worker Node (Scale Down / Maintenance)
+
+> 🧠 **What this does:** You should **never** just turn off a worker node. This command sequence safely "drains" the node, telling Kubernetes to gracefully evict all pods and recreate them on other healthy nodes *before* the machine is removed, ensuring zero downtime for your applications.
+
+### 1. Cordon and Drain the Node `[Master Node]`
+*Run on `k8s-master`.* Replace `<node-name>` with the name of the worker you want to remove (e.g., `k8s-node2`).
+```bash
+# Cordon marks the node as unschedulable (no new pods will go there)
+kubectl cordon <node-name>
+
+# Drain safely evicts existing pods and moves them to other nodes
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+```
+*(Wait until the drain completes and all pods have migrated).*
+
+### 2. Delete the Node from Kubernetes `[Master Node]`
+```bash
+kubectl delete node <node-name>
+```
+
+### 3. Wipe the Decommissioned Machine `[Worker Node]`
+*Run on the **removed worker node**.* This cleans up the Kubernetes state, CNI networks, and RHEL 10 `nftables` rules so the machine can be repurposed or safely shut down.
 ```bash
 sudo kubeadm reset --force --cri-socket unix:///run/containerd/containerd.sock
 sudo rm -rf /etc/cni/net.d /var/lib/cni /var/lib/kubelet /etc/kubernetes
 sudo ip link delete vxlan.calico 2>/dev/null || true
 sudo ip link delete cali+ 2>/dev/null || true
 
-# 🧱 RHEL 10 uses nftables natively
+# Flush RHEL 10 nftables
 sudo nft flush ruleset 2>/dev/null || true
 
-sudo systemctl restart containerd
-sudo systemctl restart kubelet
+sudo systemctl stop kubelet containerd
+```
+
+---
+
+## 🧠 7.3 Adding a Control Plane / Master Node (High Availability)
+
+> ⚠️ **Production Architecture Warning:** 
+> In Step 2, we initialized a **Single-Master** cluster using `controlPlaneEndpoint: "k8s-master:6443"`. 
+> To achieve true **High Availability (HA)** where the cluster survives the death of a master node, Kubernetes requires an **External Load Balancer** (like HAProxy + Keepalived, or a hardware LB) sitting in front of your master nodes *before* you initialize the cluster, and the `controlPlaneEndpoint` must point to that Load Balancer's VIP.
+> 
+> *If you add a second master node to your current setup without an external LB, `kubectl` commands will still only point to `k8s-master`. If `k8s-master` dies, your `kubectl` access dies with it, even though `etcd` is still healthy on the second master.*
+> 
+> **If you understand this limitation** (or plan to migrate to an external LB later), here is how you add a second master node to the `etcd` cluster.
+
+### 1. Prepare the New Master Machine
+Run all of **Step 1 (OS Preparation)** on the new master machine.
+
+### 2. Generate a New Certificate Key `[Master Node]`
+*Run on the existing `k8s-master`.* The encryption keys used to share cluster certificates expire after 2 hours. You must generate a fresh one:
+```bash
+sudo kubeadm init phase upload-certs --upload-certs
+```
+*(Look for the output line that says `certificate key:` and copy the long hex string).*
+
+### 3. Generate the Join Command `[Master Node]`
+```bash
+kubeadm token create --print-join-command
+```
+
+### 4. Join as a Control Plane Node `[New Master Node]`
+*Run on the **new master node**.* Combine the join command with the `--control-plane` flag and the `--certificate-key` you generated in Step 2:
+```bash
+sudo <paste-the-join-command-here> \
+  --control-plane \
+  --certificate-key <paste-the-certificate-key-here> \
+  --cri-socket unix:///run/containerd/containerd.sock
+```
+
+### 5. Configure `kubectl` on the New Master `[New Master Node]`
+The join process will tell you to do this at the very end. It copies the cluster credentials to your new master's local user:
+```bash
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+```
+
+### 6. Verify the etcd Cluster Health `[Master Node]`
+*Run on any master node.* You should now see multiple master nodes, and the `etcd` cluster should report multiple healthy members:
+```bash
+kubectl get nodes
+sudo kubectl -n kube-system get pods -l component=etcd
 ```
 ---
 
