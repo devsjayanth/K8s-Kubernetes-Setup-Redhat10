@@ -94,7 +94,116 @@ sudo reboot
 ```
 *(⏳ Log back into all 3 nodes after they reboot)*
 
-### 1.5 🧱 Firewall & Webhook Trust Zones
+
+
+### 1.5 ⏱️ Sync System Clock (NTP)
+> 🧠 **What this does:** K8s uses TLS certificates for all internal communication. If clocks drift by more than a few minutes between nodes, certificates are rejected as "expired" or "not yet valid", and the cluster breaks.
+
+```bash
+sudo systemctl enable --now chronyd
+sudo chronyc makestep     # Force immediate time correction
+sudo timedatectl set-ntp true
+```
+
+### 1.6 🧩 Load Kernel Modules
+> 🧠 **What this does:** 
+> * `overlay`: The filesystem driver that allows containers to have layered, lightweight filesystems.
+> * `br_netfilter`: Allows the host's firewall to inspect traffic passing between containers on a virtual bridge.
+> * `ip_vs` / `nf_conntrack`: High-performance kernel load-balancing and connection tracking.
+
+```bash
+sudo modprobe overlay br_netfilter ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack
+
+# Persist modules across reboots
+sudo tee /etc/modules-load.d/k8s.conf <<'EOF'
+overlay
+br_netfilter
+ip_vs
+ip_vs_rr
+ip_vs_wrr
+ip_vs_sh
+nf_conntrack
+EOF
+```
+
+### 1.7 ⚙️ Configure Kernel Parameters (sysctl)
+> 🧠 **What this does:** 
+> * `ip_forward`: Allows the Linux kernel to act as a router (required for pod traffic).
+> * `rp_filter`: Reverse Path filtering prevents IP spoofing, but it *breaks* VXLAN overlay networks because the source IP of encapsulated packets looks "asymmetric". We must set it to 0.
+
+Find your actual NIC name
+```
+nmcli connection show
+```
+Replace ens160 with your actual NIC name if different
+```bash
+sudo tee /etc/sysctl.d/k8s.conf <<'EOF'
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.rp_filter         = 0
+net.ipv4.conf.default.rp_filter     = 0
+net.ipv4.conf.ens160.rp_filter      = 0
+net.netfilter.nf_conntrack_max = 524288
+fs.inotify.max_user_instances = 8192
+fs.inotify.max_user_watches   = 524288
+EOF
+
+sudo sysctl --system
+sudo sysctl -w net.ipv4.conf.ens160.rp_filter=0
+```
+
+### 1.8 🛡️ Configure SELinux
+> 🧠 **What this does:** We **never** disable SELinux. Instead, we install the `container-selinux` policies and flip specific "booleans" that grant the container runtime permission to do necessary host-level tasks (like managing cgroups and proxying network traffic).
+
+```bash
+sudo dnf install -y container-selinux
+sudo semodule -B
+
+sudo setsebool -P container_manage_cgroup 1
+sudo setsebool -P container_use_devices 1
+sudo setsebool -P nis_enabled 1
+sudo setsebool -P httpd_can_network_connect 1
+sudo setsebool -P httpd_can_network_relay 1
+```
+
+### 1.9 🐳 Install Containerd
+> 🧠 **What this does:** Installs the container runtime. We force `SystemdCgroup = true` so containerd and the Kubelet use the same resource management hierarchy (preventing CPU/Memory fighting). We also pin the `pause` image, which K8s uses to hold the network namespace open for pods.
+
+```bash
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y containerd.io
+
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+sudo sed -i 's|sandbox_image = "registry.k8s.io/pause:3.[0-9]*"|sandbox_image = "registry.k8s.io/pause:3.10"|' /etc/containerd/config.toml
+
+sudo systemctl enable --now containerd
+```
+
+### 1.10 📥 Install K8s Binaries
+> 🧠 **What this does:** 
+> * `kubeadm`: The bootstrap tool (used once to build the cluster).
+> * `kubelet`: The node agent (runs constantly, ensures pods are alive).
+> * `kubectl`: The CLI tool for you to talk to the cluster.
+
+```bash
+sudo tee /etc/yum.repos.d/kubernetes.repo <<'EOF'
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.32/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.32/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+sudo systemctl enable kubelet
+```
+### 1.11 🧱 Firewall & Webhook Trust Zones
 > 🧠 **What this does:** RHEL's `firewalld` blocks traffic crossing between the physical NIC and virtual CNI bridges. Furthermore, K8s "Webhooks" (used by MetalLB and NGINX to validate configs) require the API server to talk to internal Pod IPs. Adding the Pod and Service CIDRs to the `trusted` zone permanently prevents "no route to host" and "connection refused" webhook errors.
 
 Enable Firewalld
@@ -152,114 +261,6 @@ sudo firewall-cmd --permanent --add-port=9113/tcp        # NGINX Metrics
 
 # Apply all firewall changes to the running kernel
 sudo firewall-cmd --reload
-```
-
-### 1.6 ⏱️ Sync System Clock (NTP)
-> 🧠 **What this does:** K8s uses TLS certificates for all internal communication. If clocks drift by more than a few minutes between nodes, certificates are rejected as "expired" or "not yet valid", and the cluster breaks.
-
-```bash
-sudo systemctl enable --now chronyd
-sudo chronyc makestep     # Force immediate time correction
-sudo timedatectl set-ntp true
-```
-
-### 1.7 🧩 Load Kernel Modules
-> 🧠 **What this does:** 
-> * `overlay`: The filesystem driver that allows containers to have layered, lightweight filesystems.
-> * `br_netfilter`: Allows the host's firewall to inspect traffic passing between containers on a virtual bridge.
-> * `ip_vs` / `nf_conntrack`: High-performance kernel load-balancing and connection tracking.
-
-```bash
-sudo modprobe overlay br_netfilter ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack
-
-# Persist modules across reboots
-sudo tee /etc/modules-load.d/k8s.conf <<'EOF'
-overlay
-br_netfilter
-ip_vs
-ip_vs_rr
-ip_vs_wrr
-ip_vs_sh
-nf_conntrack
-EOF
-```
-
-### 1.8 ⚙️ Configure Kernel Parameters (sysctl)
-> 🧠 **What this does:** 
-> * `ip_forward`: Allows the Linux kernel to act as a router (required for pod traffic).
-> * `rp_filter`: Reverse Path filtering prevents IP spoofing, but it *breaks* VXLAN overlay networks because the source IP of encapsulated packets looks "asymmetric". We must set it to 0.
-
-Find your actual NIC name
-```
-nmcli connection show
-```
-Replace ens160 with your actual NIC name if different
-```bash
-sudo tee /etc/sysctl.d/k8s.conf <<'EOF'
-net.bridge.bridge-nf-call-iptables  = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward = 1
-net.ipv4.conf.all.rp_filter         = 0
-net.ipv4.conf.default.rp_filter     = 0
-net.ipv4.conf.ens160.rp_filter      = 0
-net.netfilter.nf_conntrack_max = 524288
-fs.inotify.max_user_instances = 8192
-fs.inotify.max_user_watches   = 524288
-EOF
-
-sudo sysctl --system
-sudo sysctl -w net.ipv4.conf.ens160.rp_filter=0
-```
-
-### 1.9 🛡️ Configure SELinux
-> 🧠 **What this does:** We **never** disable SELinux. Instead, we install the `container-selinux` policies and flip specific "booleans" that grant the container runtime permission to do necessary host-level tasks (like managing cgroups and proxying network traffic).
-
-```bash
-sudo dnf install -y container-selinux
-sudo semodule -B
-
-sudo setsebool -P container_manage_cgroup 1
-sudo setsebool -P container_use_devices 1
-sudo setsebool -P nis_enabled 1
-sudo setsebool -P httpd_can_network_connect 1
-sudo setsebool -P httpd_can_network_relay 1
-```
-
-### 1.10 🐳 Install Containerd
-> 🧠 **What this does:** Installs the container runtime. We force `SystemdCgroup = true` so containerd and the Kubelet use the same resource management hierarchy (preventing CPU/Memory fighting). We also pin the `pause` image, which K8s uses to hold the network namespace open for pods.
-
-```bash
-sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
-sudo dnf install -y containerd.io
-
-sudo mkdir -p /etc/containerd
-containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
-
-sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-sudo sed -i 's|sandbox_image = "registry.k8s.io/pause:3.[0-9]*"|sandbox_image = "registry.k8s.io/pause:3.10"|' /etc/containerd/config.toml
-
-sudo systemctl enable --now containerd
-```
-
-### 1.11 📥 Install K8s Binaries
-> 🧠 **What this does:** 
-> * `kubeadm`: The bootstrap tool (used once to build the cluster).
-> * `kubelet`: The node agent (runs constantly, ensures pods are alive).
-> * `kubectl`: The CLI tool for you to talk to the cluster.
-
-```bash
-sudo tee /etc/yum.repos.d/kubernetes.repo <<'EOF'
-[kubernetes]
-name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.32/rpm/
-enabled=1
-gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.32/rpm/repodata/repomd.xml.key
-exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
-EOF
-
-sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
-sudo systemctl enable kubelet
 ```
 
 ---
