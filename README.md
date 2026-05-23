@@ -506,28 +506,51 @@ EOF
 
 ---
 
-## 🚦 Step 5 — Install NGINX Ingress Controller `[Master Node(Control Plane)]`
+# 🚦 Step 5 — Install NGINX Ingress Controller (v5.2.1) `[CP]`
 
-> 🧠 **What this does:** While MetalLB gets traffic *into* the cluster, it doesn't know HTTP URLs. NGINX Ingress looks at the `Host: app.local` header and routes traffic to the correct internal Service. We use a `find` command to guarantee all F5 Custom Resource Definitions (VirtualServer, Policy) are applied, preventing startup crash loops.
+> 🧠 **What this does:** While ⚖️ MetalLB gets traffic *into* the cluster at Layer 4 (TCP/IP), it doesn't understand HTTP URLs. The **F5 NGINX Ingress Controller** operates at Layer 7. It inspects the `Host:` header (e.g., `app.local`) and intelligently routes traffic to the correct internal Kubernetes Service. 
+
+*Note: We are using the official F5 NGINX Ingress Controller, not the deprecated community `ingress-nginx` project. To prevent directory and `git clone` errors, we will pull the manifests directly from the official `v5.2.1` release URLs.*
+
+---
+
+### 5.1 📜 Install Custom Resource Definitions (CRDs)
+> 🧠 **What this does:** F5 NGINX extends Kubernetes with powerful custom resources like `VirtualServer`, `Policy`, and `TransportServer`. In v5.x, F5 consolidated all of these into a single master CRD file. Applying this *first* prevents the controller from crash-looping with "Failed to watch" errors.
 
 ```bash
-git clone https://github.com/nginx/kubernetes-ingress.git --branch v5.2.1 --depth 1
-cd kubernetes-ingress
+# Apply the consolidated v5.x CRDs directly from the official release
+kubectl apply -f https://raw.githubusercontent.com/nginx/kubernetes-ingress/v5.2.1/deploy/crds.yaml
+
+# Verify they were created
+kubectl get crd | grep nginx.org
 ```
-Apply RBAC, ConfigMaps, and IngressClass
-```
-kubectl apply -f deployments/common/ns-and-sa.yaml
-kubectl apply -f deployments/rbac/rbac.yaml
-kubectl apply -f deployments/common/nginx-config.yaml
-kubectl apply -f deployments/common/ingress-class.yaml
-```
-Deploy the controller and wait for it to be ready
-```
-kubectl apply -f deployments/deployment/nginx-ingress.yaml
+*(You should see `virtualservers`, `policies`, `transportservers`, etc.)*
+
+### 5.2 🏗️ Deploy the Controller, RBAC, and ConfigMaps
+> 🧠 **What this does:** Creates the `nginx-ingress` namespace, sets up the Service Accounts and Permissions (RBAC), applies the default NGINX ConfigMap, and finally deploys the controller pods.
+
+```bash
+# 1. Namespace & Service Account
+kubectl apply -f https://raw.githubusercontent.com/nginx/kubernetes-ingress/v5.2.1/deployments/common/ns-and-sa.yaml
+
+# 2. RBAC (Permissions)
+kubectl apply -f https://raw.githubusercontent.com/nginx/kubernetes-ingress/v5.2.1/deployments/rbac/rbac.yaml
+
+# 3. ConfigMap & IngressClass
+kubectl apply -f https://raw.githubusercontent.com/nginx/kubernetes-ingress/v5.2.1/deployments/common/nginx-config.yaml
+kubectl apply -f https://raw.githubusercontent.com/nginx/kubernetes-ingress/v5.2.1/deployments/common/ingress-class.yaml
+
+# 4. The Controller Deployment
+kubectl apply -f https://raw.githubusercontent.com/nginx/kubernetes-ingress/v5.2.1/deployments/deployment/nginx-ingress.yaml
+
+# ⏳ Wait for the pod to download and become fully Ready (1/1)
 kubectl rollout status deployment nginx-ingress -n nginx-ingress --timeout=180s
 ```
-Expose NGINX to the physical network via MetalLB (Pinned to 10.0.0.200)
-```
+
+### 5.3 🌐 Expose via MetalLB (Pinned to 10.0.0.200)
+> 🧠 **What this does:** Creates a `LoadBalancer` service. The special `metallb.universe.tf` annotations tell ⚖️ MetalLB to bypass the general IP pool and permanently assign our dedicated physical LAN IP (`10.0.0.200`) to the NGINX pods.
+
+```bash
 kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: Service
@@ -545,22 +568,31 @@ spec:
     - name: http
       port: 80
       targetPort: 80
+      protocol: TCP
     - name: https
       port: 443
       targetPort: 443
+      protocol: TCP
 EOF
+
+# Watch the service until EXTERNAL-IP becomes 10.0.0.200 (Press Ctrl+C to stop)
+kubectl get svc nginx-ingress -n nginx-ingress --watch
 ```
-Make NGINX the default ingress class so you don't have to specify it on every rule
-```
-kubectl annotate ingressclass nginx ingressclass.kubernetes.io/is-default-class="true"
+
+### 5.4 ⭐ Set as Default IngressClass
+> 🧠 **What this does:** Marks NGINX as the default ingress controller. This means you won't have to manually type `ingressClassName: nginx` on every single Ingress rule you create in the future.
+
+```bash
+kubectl annotate ingressclass nginx ingressclass.kubernetes.io/is-default-class="true" --overwrite
 ```
 
 ---
 
-## 🧪 Step 6 — The Flawless End-to-End Test `[Master Node(Control Plane)]`
+## 🧪 Step 6 — The End-to-End Test `[Master Node(Control Plane)]`
 
 > 🧠 **What this does:** Deploys a tiny web server, creates a K8s Service for it, and creates an Ingress Rule telling NGINX to route `test.local` to it. This validates the entire chain: **User ➡️ ⚖️ MetalLB (L2) ➡️ 🚦 NGINX Pod (L7) ➡️ App Pod**.
 
+### 6.1 Deploy the Test App & Ingress Rule
 ```bash
 kubectl apply -f - <<'EOF'
 apiVersion: apps/v1
@@ -601,7 +633,7 @@ kind: Ingress
 metadata:
   name: hello-ingress
 spec:
-  ingressClassName: nginx
+  # ingressClassName is omitted because we made NGINX the default in Step 5.4!
   rules:
     - host: test.local
       http:
@@ -615,21 +647,32 @@ spec:
                   number: 80
 EOF
 ```
-⏳ Wait for pods to spin up
-```
-kubectl rollout status deployment hello
-```
 
-🌐 Test the routing! (Spoofing the Host header so NGINX knows where to send it)
-```
+### 6.2 Wait and Test
+```bash
+# ⏳ Wait for the backend pods to spin up
+kubectl rollout status deployment hello
+
+# 🌐 Test the routing! 
+# We use curl to spoof the "Host: test.local" header so NGINX knows where to send it.
 curl -H "Host: test.local" http://10.0.0.200
 ```
 
-**Expected Output:**
+**🎉 Expected Output:**
 ```text
 Hello from K8s!
 ```
 
+---
+
+## 🧹 Cleanup the Test Environment
+Once you've verified the routing works, clean up the test resources so your cluster is pristine for your actual workloads:
+
+```bash
+kubectl delete ingress hello-ingress
+kubectl delete svc hello
+kubectl delete deploy hello
+```
 ---
 
 ## 🧹 Appendix: Safe Node Reset (RHEL 10)
