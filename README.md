@@ -520,9 +520,6 @@ kubectl apply -f deployments/common/ns-and-sa.yaml
 kubectl apply -f deployments/rbac/rbac.yaml
 kubectl apply -f deployments/common/nginx-config.yaml
 kubectl apply -f deployments/common/ingress-class.yaml
-
-# 🔍 Bulletproof CRD installation (finds all YAMLs in the crds folder)
-find deployments/common/crds -type f -name "*.yaml" -exec kubectl apply -f {} \;
 ```
 Deploy the controller and wait for it to be ready
 ```
