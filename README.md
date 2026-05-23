@@ -1,9 +1,6 @@
-# 🚢Kubernetes Cluster Setup on [ RHEL10/Redhat10 ]☸️
-### 🐧 RHEL 10 · Rocky Linux 10 · AlmaLinux 10
-### 🕸️ Calico (NFT) · ⚖️ MetalLB · 🚦 F5 NGINX Ingress Controller
-
-This is the **final, fully documented Standard Operating Procedure (SOP)**. It includes plain-English explanations of *why* we are doing each step, inline bash comments, and every battle-tested fix required for RHEL 10's unique security and networking landscape.
-
+# 🚢Kubernetes Cluster Setup on [RHEL10]
+### 🐧 RedHat10 Family.
+### 🕸️ Calico  · ⚖️ MetalLB Load Balancer · 🚦 F5 Nginx Ingress Controller
 ---
 
 ## 🧠 Architecture & Component Overview
