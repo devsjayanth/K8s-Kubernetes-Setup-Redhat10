@@ -303,7 +303,7 @@ EOF
 ### 2.2 🚀 Bootstrap the Control Plane
 ```bash
 # Initialize the master node and save the output to a log
-sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml --upload-certs | tee /root/kubeadm-init.log
+sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml --upload-certs | sudo tee /root/kubeadm-init.log
 
 # Configure kubectl for your local user (DO NOT use sudo for kubectl)
 mkdir -p $HOME/.kube
