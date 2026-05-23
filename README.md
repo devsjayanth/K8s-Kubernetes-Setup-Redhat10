@@ -100,10 +100,11 @@ sudo reboot
 ### 1.5 🧱 Firewall & Webhook Trust Zones
 > 🧠 **What this does:** RHEL's `firewalld` blocks traffic crossing between the physical NIC and virtual CNI bridges. Furthermore, K8s "Webhooks" (used by MetalLB and NGINX to validate configs) require the API server to talk to internal Pod IPs. Adding the Pod and Service CIDRs to the `trusted` zone permanently prevents "no route to host" and "connection refused" webhook errors.
 
+Enable Firewalld
 ```bash
 sudo systemctl enable --now firewalld
 ```
---- 🤝 TRUST CLUSTER NETWORKS (Fixes Webhooks & API Routing) ---
+🤝 Trust Cluster Networks (Fixes Webhooks & API Routing)
 ```
 #IP Address of all nodes (Change if its different)
 sudo firewall-cmd --zone=trusted --add-source=10.0.0.150/32 --permanent
@@ -112,6 +113,7 @@ sudo firewall-cmd --zone=trusted --add-source=10.0.0.152/32 --permanent
 # Apply all firewall changes to the running kernel
 sudo firewall-cmd --reload
 ```
+🤝 Trust Calico & K8s CIDR
 ```
 # Calico Pod CIDR
 sudo firewall-cmd --zone=trusted --add-source=192.168.0.0/16 --permanent
@@ -120,7 +122,7 @@ sudo firewall-cmd --zone=trusted --add-source=10.96.0.0/12 --permanent
 # Apply all firewall changes to the running kernel
 sudo firewall-cmd --reload
 ```
---- 🔓 COMMON PORTS (All Nodes) ---
+🔓 COMMON PORTS (All Nodes)
 ```
 sudo firewall-cmd --permanent --add-service=ntp          # Time sync
 sudo firewall-cmd --permanent --add-port=10250/tcp       # Kubelet API
@@ -133,7 +135,7 @@ sudo firewall-cmd --permanent --add-port=7946/udp        # MetalLB Gossip
 # Apply all firewall changes to the running kernel
 sudo firewall-cmd --reload
 ```
---- 🧠 CONTROL PLANE PORTS (Master Only) ---
+🧠 CONTROL PLANE PORTS (Masters Only)
 ```
 sudo firewall-cmd --permanent --add-port=6443/tcp      # K8s API Server
 sudo firewall-cmd --permanent --add-port=2379-2380/tcp # etcd database
@@ -142,8 +144,7 @@ sudo firewall-cmd --permanent --add-port=10259/tcp     # scheduler
 # Apply all firewall changes to the running kernel
 sudo firewall-cmd --reload
 ```
-
---- 👷 WORKER PORTS (Workers Only) ---
+👷 WORKER PORTS (Workers Only)
 ```
 sudo firewall-cmd --permanent --add-port=30000-32767/tcp # NodePort TCP
 sudo firewall-cmd --permanent --add-port=30000-32767/udp # NodePort UDP
