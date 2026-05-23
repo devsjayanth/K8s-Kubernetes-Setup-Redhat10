@@ -448,12 +448,13 @@ EOF
 
 > 🧠 **What this does:** Bare-metal servers don't have AWS/GCP Load Balancers. MetalLB solves this by listening for ARP requests on your local network ("Who has 10.0.0.200?") and answering them, effectively pulling external traffic into the K8s cluster.
 
+Install MetalLB in native Layer 2 mode
 ```bash
-# Install MetalLB in native Layer 2 mode
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 kubectl wait --namespace metallb-system --for=condition=Ready pod --selector=app=metallb --timeout=180s
-
-# Define the IP pools and advertise them via Layer 2 ARP
+```
+Define the IP pools and advertise them via Layer 2 ARP
+```
 kubectl apply -f - <<'EOF'
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -502,8 +503,9 @@ EOF
 ```bash
 git clone https://github.com/nginx/kubernetes-ingress.git --branch v5.2.1 --depth 1
 cd kubernetes-ingress
-
-# Apply RBAC, ConfigMaps, and IngressClass
+```
+Apply RBAC, ConfigMaps, and IngressClass
+```
 kubectl apply -f deployments/common/ns-and-sa.yaml
 kubectl apply -f deployments/rbac/rbac.yaml
 kubectl apply -f deployments/common/nginx-config.yaml
@@ -511,12 +513,14 @@ kubectl apply -f deployments/common/ingress-class.yaml
 
 # 🔍 Bulletproof CRD installation (finds all YAMLs in the crds folder)
 find deployments/common/crds -type f -name "*.yaml" -exec kubectl apply -f {} \;
-
-# Deploy the controller and wait for it to be ready
+```
+Deploy the controller and wait for it to be ready
+```
 kubectl apply -f deployments/deployment/nginx-ingress.yaml
 kubectl rollout status deployment nginx-ingress -n nginx-ingress --timeout=180s
-
-# Expose NGINX to the physical network via MetalLB (Pinned to 10.0.0.200)
+```
+Expose NGINX to the physical network via MetalLB (Pinned to 10.0.0.200)
+```
 kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: Service
@@ -538,8 +542,9 @@ spec:
       port: 443
       targetPort: 443
 EOF
-
-# Make NGINX the default ingress class so you don't have to specify it on every rule
+```
+Make NGINX the default ingress class so you don't have to specify it on every rule
+```
 kubectl annotate ingressclass nginx ingressclass.kubernetes.io/is-default-class="true"
 ```
 
@@ -569,7 +574,7 @@ spec:
         - name: hello
           image: hashicorp/http-echo:0.2.3
           args:
-            - "-text=Hello from AlmaLinux 10 K8s!"
+            - "-text=Hello from K8s!"
           ports:
             - containerPort: 5678
 ---
@@ -602,17 +607,20 @@ spec:
                 port:
                   number: 80
 EOF
-
-# ⏳ Wait for pods to spin up
+```
+⏳ Wait for pods to spin up
+```
 kubectl rollout status deployment hello
+```
 
-# 🌐 Test the routing! (Spoofing the Host header so NGINX knows where to send it)
+🌐 Test the routing! (Spoofing the Host header so NGINX knows where to send it)
+```
 curl -H "Host: test.local" http://10.0.0.200
 ```
 
 **Expected Output:**
 ```text
-Hello from AlmaLinux 10 K8s!
+Hello from K8s!
 ```
 
 ---
