@@ -325,12 +325,29 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 ```bash
 kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
-
-# ⏳ Wait for API server to recognize Calico resource types
+```
+⏳ Wait for API server to recognize Calico resource types
+```
+kubectl get pod -n tigera-operator
+```
+Output:
+```
+NAME                             READY   STATUS    RESTARTS   AGE
+tigera-operator-f7d7dc8d-ckzv5   1/1     Running   0          54s
+```
+Verify:
+```
 kubectl wait --for condition=established --timeout=120s crd/installations.operator.tigera.io
 kubectl wait --for condition=established --timeout=120s crd/apiservers.operator.tigera.io
+```
+Output:
+```
+customresourcedefinition.apiextensions.k8s.io/installations.operator.tigera.io condition met
+customresourcedefinition.apiextensions.k8s.io/apiservers.operator.tigera.io condition met
+```
+Tell the Operator to install Calico using the NFT dataplane and VXLAN
+```
 
-# Tell the Operator to install Calico using the NFT dataplane and VXLAN
 kubectl apply -f - <<'EOF'
 apiVersion: operator.tigera.io/v1
 kind: Installation
