@@ -13,19 +13,7 @@ Before typing commands, it helps to understand how traffic flows from the outsid
 ### 🔄 Traffic Flow Architecture
 
 ```text
-🌐 External Client (Internet / Local LAN)
-      │
-      ▼
-⚖️ MetalLB (Intercepts ARP, assigns External IP)
-      │
-      ▼
-🚦 NGINX Ingress (Reads HTTP Host Header, routes to Service)
-      │
-      ▼
-🕸️ Calico CNI (Routes traffic across VXLAN Overlay to Pod IP)
-      │
-      ▼
-🚀 App Pods (🐳 containerd on 👷 Worker Nodes)
+│🌐 Clients│───▶│⚖️ MetalLB│───▶│🚦NGINX│───▶│🕸️ Calico CNI│───▶│K8s App Pods│
 ```
 
 ### 📋 Component Glossary
