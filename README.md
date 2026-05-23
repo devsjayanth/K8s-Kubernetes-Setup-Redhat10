@@ -101,17 +101,27 @@ sudo reboot
 > 🧠 **What this does:** RHEL's `firewalld` blocks traffic crossing between the physical NIC and virtual CNI bridges. Furthermore, K8s "Webhooks" (used by MetalLB and NGINX to validate configs) require the API server to talk to internal Pod IPs. Adding the Pod and Service CIDRs to the `trusted` zone permanently prevents "no route to host" and "connection refused" webhook errors.
 
 ```bash
-NODE_HOSTNAME=$(hostname)
 sudo systemctl enable --now firewalld
-
-# --- 🤝 TRUST CLUSTER NETWORKS (Fixes Webhooks & API Routing) ---
+```
+--- 🤝 TRUST CLUSTER NETWORKS (Fixes Webhooks & API Routing) ---
+```
+#IP Address of all nodes (Change if its different)
 sudo firewall-cmd --zone=trusted --add-source=10.0.0.150/32 --permanent
 sudo firewall-cmd --zone=trusted --add-source=10.0.0.151/32 --permanent
 sudo firewall-cmd --zone=trusted --add-source=10.0.0.152/32 --permanent
-sudo firewall-cmd --zone=trusted --add-source=192.168.0.0/16 --permanent # Calico Pod CIDR
-sudo firewall-cmd --zone=trusted --add-source=10.96.0.0/12 --permanent   # K8s Service CIDR
-
-# --- 🔓 COMMON PORTS (All Nodes) ---
+# Apply all firewall changes to the running kernel
+sudo firewall-cmd --reload
+```
+```
+# Calico Pod CIDR
+sudo firewall-cmd --zone=trusted --add-source=192.168.0.0/16 --permanent
+# K8s Service CIDR
+sudo firewall-cmd --zone=trusted --add-source=10.96.0.0/12 --permanent
+# Apply all firewall changes to the running kernel
+sudo firewall-cmd --reload
+```
+--- 🔓 COMMON PORTS (All Nodes) ---
+```
 sudo firewall-cmd --permanent --add-service=ntp          # Time sync
 sudo firewall-cmd --permanent --add-port=10250/tcp       # Kubelet API
 sudo firewall-cmd --permanent --add-port=179/tcp         # Calico BGP
@@ -120,24 +130,27 @@ sudo firewall-cmd --permanent --add-port=5473/tcp        # Calico Typha
 sudo firewall-cmd --permanent --add-port=9099/tcp        # Calico Felix Health
 sudo firewall-cmd --permanent --add-port=7946/tcp        # MetalLB Gossip
 sudo firewall-cmd --permanent --add-port=7946/udp        # MetalLB Gossip
+# Apply all firewall changes to the running kernel
+sudo firewall-cmd --reload
+```
+--- 🧠 CONTROL PLANE PORTS (Master Only) ---
+```
+sudo firewall-cmd --permanent --add-port=6443/tcp      # K8s API Server
+sudo firewall-cmd --permanent --add-port=2379-2380/tcp # etcd database
+sudo firewall-cmd --permanent --add-port=10257/tcp     # controller-manager
+sudo firewall-cmd --permanent --add-port=10259/tcp     # scheduler
+# Apply all firewall changes to the running kernel
+sudo firewall-cmd --reload
+```
 
-# --- 🧠 CONTROL PLANE PORTS (Master Only) ---
-if [[ "$NODE_HOSTNAME" == *"master"* ]]; then
-  sudo firewall-cmd --permanent --add-port=6443/tcp      # K8s API Server
-  sudo firewall-cmd --permanent --add-port=2379-2380/tcp # etcd database
-  sudo firewall-cmd --permanent --add-port=10257/tcp     # controller-manager
-  sudo firewall-cmd --permanent --add-port=10259/tcp     # scheduler
-fi
-
-# --- 👷 WORKER PORTS (Workers Only) ---
-if [[ "$NODE_HOSTNAME" == *"node"* ]]; then
-  sudo firewall-cmd --permanent --add-port=30000-32767/tcp # NodePort TCP
-  sudo firewall-cmd --permanent --add-port=30000-32767/udp # NodePort UDP
-  sudo firewall-cmd --permanent --add-service=http         # Ingress HTTP
-  sudo firewall-cmd --permanent --add-service=https        # Ingress HTTPS
-  sudo firewall-cmd --permanent --add-port=8443/tcp        # NGINX Webhook
-  sudo firewall-cmd --permanent --add-port=9113/tcp        # NGINX Metrics
-fi
+--- 👷 WORKER PORTS (Workers Only) ---
+```
+sudo firewall-cmd --permanent --add-port=30000-32767/tcp # NodePort TCP
+sudo firewall-cmd --permanent --add-port=30000-32767/udp # NodePort UDP
+sudo firewall-cmd --permanent --add-service=http         # Ingress HTTP
+sudo firewall-cmd --permanent --add-service=https        # Ingress HTTPS
+sudo firewall-cmd --permanent --add-port=8443/tcp        # NGINX Webhook
+sudo firewall-cmd --permanent --add-port=9113/tcp        # NGINX Metrics
 
 # Apply all firewall changes to the running kernel
 sudo firewall-cmd --reload
@@ -178,8 +191,12 @@ EOF
 > * `ip_forward`: Allows the Linux kernel to act as a router (required for pod traffic).
 > * `rp_filter`: Reverse Path filtering prevents IP spoofing, but it *breaks* VXLAN overlay networks because the source IP of encapsulated packets looks "asymmetric". We must set it to 0.
 
+Find your actual NIC name
+```
+nmcli connection show
+```
+Replace ens160 with your actual NIC name if different
 ```bash
-# Replace ens160 with your actual NIC name if different
 sudo tee /etc/sysctl.d/k8s.conf <<'EOF'
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
@@ -249,7 +266,7 @@ sudo systemctl enable kubelet
 
 ---
 
-## 🏗️ Step 2 — Initialise the Cluster `[CP]`
+## 🏗️ Step 2 — Initialise the Cluster `[Master Node(Control Plane)]`
 *Run ONLY on `k8s-master`.*
 
 ### 2.1 📝 Create kubeadm Config File
@@ -296,13 +313,13 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
 *⚠️ **Copy the `kubeadm join` command printed at the bottom of the output.***
 
-### 2.3 🤝 Join Worker Nodes `[W]`
+### 2.3 🤝 Join Worker Nodes `[Worker Node]`
 *Run the saved `kubeadm join` command on `k8s-node1` and `k8s-node2`.*
 *(💡 Note: If a worker gets an "empty config.yaml" crash loop, run `sudo kubeadm reset -f`, `sudo rm -rf /var/lib/kubelet`, and try the join command again).*
 
 ---
 
-## 🕸️ Step 3 — Install Calico CNI `[CP]`
+## 🕸️ Step 3 — Install Calico CNI `[Master Node(Control Plane)]`
 *Run ONLY on `k8s-master`.*
 
 > 🧠 **What this does:** Deploys the Tigera Operator, which acts as a "manager" to install and maintain Calico. We explicitly wait for the Custom Resource Definitions (CRDs) to register before applying the config, avoiding a common race condition.
@@ -385,7 +402,7 @@ EOF
 
 ---
 
-## ⚖️ Step 4 — Install MetalLB `[CP]`
+## ⚖️ Step 4 — Install MetalLB `[Master Node(Control Plane)]`
 
 > 🧠 **What this does:** Bare-metal servers don't have AWS/GCP Load Balancers. MetalLB solves this by listening for ARP requests on your local network ("Who has 10.0.0.200?") and answering them, effectively pulling external traffic into the K8s cluster.
 
@@ -436,7 +453,7 @@ EOF
 
 ---
 
-## 🚦 Step 5 — Install NGINX Ingress Controller `[CP]`
+## 🚦 Step 5 — Install NGINX Ingress Controller `[Master Node(Control Plane)]`
 
 > 🧠 **What this does:** While MetalLB gets traffic *into* the cluster, it doesn't know HTTP URLs. NGINX Ingress looks at the `Host: app.local` header and routes traffic to the correct internal Service. We use a `find` command to guarantee all F5 Custom Resource Definitions (VirtualServer, Policy) are applied, preventing startup crash loops.
 
@@ -486,7 +503,7 @@ kubectl annotate ingressclass nginx ingressclass.kubernetes.io/is-default-class=
 
 ---
 
-## 🧪 Step 6 — The Flawless End-to-End Test `[CP]`
+## 🧪 Step 6 — The Flawless End-to-End Test `[Master Node(Control Plane)]`
 
 > 🧠 **What this does:** Deploys a tiny web server, creates a K8s Service for it, and creates an Ingress Rule telling NGINX to route `test.local` to it. This validates the entire chain: **User ➡️ ⚖️ MetalLB (L2) ➡️ 🚦 NGINX Pod (L7) ➡️ App Pod**.
 
