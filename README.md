@@ -1,6 +1,6 @@
-# 🚢 K8s Cluster on RedHat10 - Kubernetes Production Setup
+# 🚢 Kubernetes Cluster Setup on [ RHEL10/Redhat10 ]
 ### 🐧 RHEL 10 · Rocky Linux 10 · AlmaLinux 10
-### 🕸️ Calico (NFT) · 🧲 MetalLB · 🚦 F5 NGINX Ingress Controller
+### 🕸️ Calico (NFT) · ⚖️ MetalLB · 🚦 F5 NGINX Ingress Controller
 
 This is the **final, fully documented Standard Operating Procedure (SOP)**. It includes plain-English explanations of *why* we are doing each step, inline bash comments, and every battle-tested fix required for RHEL 10's unique security and networking landscape.
 
@@ -8,38 +8,24 @@ This is the **final, fully documented Standard Operating Procedure (SOP)**. It i
 
 ## 🧠 Architecture & Component Overview
 
-Before typing commands, it helps to understand what each piece of the puzzle actually does and how traffic flows from the outside world into your containers.
+Before typing commands, it helps to understand how traffic flows from the outside world down into your containers.
+
+### 🔄 Traffic Flow Architecture
 
 ```text
-                               🌐 External Client / Internet
-                                          │
-                                          ▼
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     🏢 PHYSICAL LAN (10.0.0.x)                               │
-│                                                                                              │
-│   🧲 MetalLB (Layer 2 ARP)                                                                   │
-│   Answers ARP requests for the Ingress IP (10.0.0.200) and pulls traffic into K8s.           │
-│          │                                                                                   │
-│          ▼                                                                                   │
-│   ┌──────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                        ☸️ Kubernetes Cluster (v1.32.x / AlmaLinux 10)                │   │
-│   │                                                                                      │   │
-│   │   🚦 NGINX Ingress Controller (Layer 7 HTTP Routing)                                 │   │
-│   │   Inspects Host headers (e.g., test.local) and routes to backend Services.           │   │
-│   │          │                                                                           │   │
-│   │          ▼                                                                           │   │
-│   │   🕸️ Calico CNI (VXLAN Overlay / NFT Dataplane)                                      │   │
-│   │   Provides Pod IPs (192.168.0.0/16) and secure cross-node tunneling.                 │   │
-│   │          │                                                                           │   │
-│   │          ▼                                                                           │   │
-│   │   🚀 App Pods (e.g., hashicorp/http-echo)                                            │   │
-│   │   Managed by 🛠️ kubelet and executed by 🐳 containerd on 👷 Worker Nodes.             │   │
-│   │                                                                                      │   │
-│   │   🧠 Control Plane (k8s-master)                                                      │   │
-│   │   ┣━ 🗄️ etcd (Database)       ┣━ ⚙️ kube-apiserver (API Gateway)                     │   │
-│   │   ┗━ 📅 kube-scheduler         ┗━ 🔄 kube-controller-manager                         │   │
-│   └──────────────────────────────────────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
+🌐 External Client (Internet / Local LAN)
+      │
+      ▼
+⚖️ MetalLB (Intercepts ARP, assigns External IP)
+      │
+      ▼
+🚦 NGINX Ingress (Reads HTTP Host Header, routes to Service)
+      │
+      ▼
+🕸️ Calico CNI (Routes traffic across VXLAN Overlay to Pod IP)
+      │
+      ▼
+🚀 App Pods (🐳 containerd on 👷 Worker Nodes)
 ```
 
 ### 📋 Component Glossary
@@ -49,7 +35,7 @@ Before typing commands, it helps to understand what each piece of the puzzle act
 | ☸️ **Kubernetes (K8s)** | The "operating system" for your cluster. It schedules containers, heals them if they crash, and scales them. |
 | 🐳 **Containerd** | The actual engine that downloads images and runs the containers on the Linux kernel. |
 | 🕸️ **Calico (CNI)** | The "virtual network switch". It gives every pod its own IP address and creates encrypted tunnels (VXLAN) so pods on different physical servers can talk to each other. |
-| 🧲 **MetalLB** | The "bare-metal cloud provider". Clouds give you Load Balancers automatically; bare-metal doesn't. MetalLB tricks your local network router into thinking your K8s cluster is a physical device by answering ARP requests. |
+| ⚖️ **MetalLB** | The "bare-metal cloud provider". Clouds give you Load Balancers automatically; bare-metal doesn't. MetalLB tricks your local network router into thinking your K8s cluster is a physical device by answering ARP requests. |
 | 🚦 **NGINX Ingress** | The "smart HTTP router". While MetalLB operates at Layer 4 (TCP/IP), NGINX operates at Layer 7 (HTTP). It looks at the URL (e.g., `app.local`) and routes traffic to the correct internal pod. |
 
 ### 🌐 Network Topology
@@ -405,7 +391,7 @@ EOF
 
 ---
 
-## 🧲 Step 4 — Install MetalLB `[CP]`
+## ⚖️ Step 4 — Install MetalLB `[CP]`
 
 > 🧠 **What this does:** Bare-metal servers don't have AWS/GCP Load Balancers. MetalLB solves this by listening for ARP requests on your local network ("Who has 10.0.0.200?") and answering them, effectively pulling external traffic into the K8s cluster.
 
@@ -508,7 +494,7 @@ kubectl annotate ingressclass nginx ingressclass.kubernetes.io/is-default-class=
 
 ## 🧪 Step 6 — The Flawless End-to-End Test `[CP]`
 
-> 🧠 **What this does:** Deploys a tiny web server, creates a K8s Service for it, and creates an Ingress Rule telling NGINX to route `test.local` to it. This validates the entire chain: **User ➡️ MetalLB (L2) ➡️ NGINX Pod (L7) ➡️ App Pod**.
+> 🧠 **What this does:** Deploys a tiny web server, creates a K8s Service for it, and creates an Ingress Rule telling NGINX to route `test.local` to it. This validates the entire chain: **User ➡️ ⚖️ MetalLB (L2) ➡️ 🚦 NGINX Pod (L7) ➡️ App Pod**.
 
 ```bash
 kubectl apply -f - <<'EOF'
